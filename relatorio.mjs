@@ -47,13 +47,25 @@ const ncHeaders = { Authorization: `Bearer ${NC.key}`, "Content-Type": "applicat
 
 // ---- as 12 variáveis Lista, em ordem de operação (Qua -> Véspera) ----
 const NOITES = [
-  { key: "QUA",  label: "Quarta",  geral: "Total Lista QUA",         fem: "Total Lista QUA FEM" },
-  { key: "QUI",  label: "Quinta",  geral: "Total Lista QUI",         fem: "Total Lista QUI FEM" },
-  { key: "SEX",  label: "Sexta",   geral: "03 - Total Lista SEX",    fem: "03 - Total Lista SEX FEM" },
-  { key: "SAB",  label: "Sábado",  geral: "04 - Total Lista SAB",    fem: "04 - Total Lista SAB FEM" },
-  { key: "DOM",  label: "Domingo", geral: "05 - Total Lista DOM",    fem: "05 - Total Lista DOM FEM" },
-  { key: "VESP", label: "Véspera", geral: "Total Lista VESP",        fem: "Total Lista VESP FEM" },
+  { key: "QUA",  label: "Quarta",  alerta: "QUA",                geral: "Total Lista QUA",      fem: "Total Lista QUA FEM" },
+  { key: "QUI",  label: "Quinta",  alerta: "QUI",                geral: "Total Lista QUI",      fem: "Total Lista QUI FEM" },
+  { key: "SEX",  label: "Sexta",   alerta: "SEX",                geral: "03 - Total Lista SEX", fem: "03 - Total Lista SEX FEM" },
+  { key: "SAB",  label: "Sábado",  alerta: "SAB",                geral: "04 - Total Lista SAB", fem: "04 - Total Lista SAB FEM" },
+  { key: "DOM",  label: "Domingo", alerta: "DOM",                geral: "05 - Total Lista DOM", fem: "05 - Total Lista DOM FEM" },
+  { key: "VESP", label: "Véspera", alerta: "Véspera / Feriado",  geral: "Total Lista VESP",     fem: "Total Lista VESP FEM" },
 ];
+
+// monta o texto do alerta diário (determinístico, sem total semanal)
+async function textoAlerta() {
+  const { noites } = await coletar();
+  const linhas = ["📋🟢 Listas da Semana — AGORA:", ""];
+  for (const n of noites) {
+    const fem = `${n.fem} ${n.fem === 1 ? "Mulher" : "Mulheres"}${n.fem > 0 ? " 💃" : ""}`;
+    const masc = `${n.masc} ${n.masc === 1 ? "Homem" : "Homens"}${n.masc > 0 ? " 🕺" : ""}`;
+    linhas.push(`${n.alerta}:`, `${n.total} cadastrados`, `Sendo: ${fem} · ${masc}`, "");
+  }
+  return linhas.join("\n").trimEnd();
+}
 
 async function botFieldsMap() {
   const map = {};
@@ -114,6 +126,10 @@ try {
   } else if (cmd === "enviar-file") {
     if (!arg) throw new Error("uso: enviar-file <caminho>");
     console.log(JSON.stringify(await enviar(readFileSync(arg, "utf8"))));
+  } else if (cmd === "alerta") {
+    console.log(await textoAlerta());
+  } else if (cmd === "enviar-alerta") {
+    console.log(JSON.stringify(await enviar(await textoAlerta())));
   } else if (cmd === "reset") {
     await reset(confirmar);
   } else {
