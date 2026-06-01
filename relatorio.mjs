@@ -23,18 +23,22 @@ function readEnvFile(path) {
   } catch { return {}; }
 }
 
-// ---- credenciais: env var primeiro, depois arquivos locais ----
+// ---- credenciais: .env do repo > .env do z-api local > env vars do sistema ----
+const ENV = {
+  ...readEnvFile(join(__dirname, ".env")),
+  ...readEnvFile(join(__dirname, "..", "z-api", ".env")),
+  ...process.env,
+};
 function nicochatKey() {
-  if (process.env.NICOCHAT_API_KEY) return { key: process.env.NICOCHAT_API_KEY, base: process.env.NICOCHAT_BASE_URL || "https://app.nicochat.com.br/api" };
+  if (ENV.NICOCHAT_API_KEY) return { key: ENV.NICOCHAT_API_KEY, base: ENV.NICOCHAT_BASE_URL || "https://app.nicochat.com.br/api" };
   const c = JSON.parse(readFileSync(join(__dirname, "credentials.json"), "utf8")).clients.butiquim;
   return { key: c.api_key, base: c.base_url };
 }
 function zapi() {
-  const e = { ...readEnvFile(join(__dirname, "..", "z-api", ".env")), ...process.env };
   return {
-    base: e.ZAPI_BASE_URL || "https://api.z-api.io",
-    instance: e.ZAPI_INSTANCE_ID, token: e.ZAPI_TOKEN, clientToken: e.ZAPI_CLIENT_TOKEN,
-    dest: e.WHATSAPP_DEST || "5544984232574",
+    base: ENV.ZAPI_BASE_URL || "https://api.z-api.io",
+    instance: ENV.ZAPI_INSTANCE_ID, token: ENV.ZAPI_TOKEN, clientToken: ENV.ZAPI_CLIENT_TOKEN,
+    dest: ENV.WHATSAPP_DEST || "5544984232574",
   };
 }
 
@@ -106,6 +110,9 @@ try {
   } else if (cmd === "enviar") {
     if (!arg) throw new Error('uso: enviar "<texto>"');
     console.log(JSON.stringify(await enviar(arg)));
+  } else if (cmd === "enviar-file") {
+    if (!arg) throw new Error("uso: enviar-file <caminho>");
+    console.log(JSON.stringify(await enviar(readFileSync(arg, "utf8"))));
   } else if (cmd === "reset") {
     await reset(confirmar);
   } else {
