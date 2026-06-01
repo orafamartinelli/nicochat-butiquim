@@ -38,7 +38,7 @@ function zapi() {
   return {
     base: ENV.ZAPI_BASE_URL || "https://api.z-api.io",
     instance: ENV.ZAPI_INSTANCE_ID, token: ENV.ZAPI_TOKEN, clientToken: ENV.ZAPI_CLIENT_TOKEN,
-    dest: ENV.WHATSAPP_DEST || "5544984232574",
+    dest: ENV.WHATSAPP_DEST || "",
   };
 }
 
@@ -82,6 +82,7 @@ async function coletar() {
 async function enviar(texto) {
   const z = zapi();
   if (!z.instance || !z.token) throw new Error("Z-API sem credenciais (ZAPI_INSTANCE_ID/ZAPI_TOKEN).");
+  if (!z.dest) throw new Error("WHATSAPP_DEST não definido (número de destino).");
   const url = `${z.base}/instances/${z.instance}/token/${z.token}/send-text`;
   const r = await fetch(url, { method: "POST", headers: { "Client-Token": z.clientToken, "Content-Type": "application/json" }, body: JSON.stringify({ phone: z.dest, message: texto }) });
   const j = await r.json().catch(() => ({}));
