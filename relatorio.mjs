@@ -67,6 +67,20 @@ async function textoAlerta() {
   return linhas.join("\n").trimEnd();
 }
 
+// monta o fechamento semanal (por dia em citação + totais + comentário da IA)
+async function textoFechamento(comentario) {
+  const { noites, totais } = await coletar();
+  const pct = (n) => (totais.total ? Math.round((n / totais.total) * 100) : 0);
+  const linhas = ["🏁 *Fechamento da Semana — O Butiquim*", ""];
+  for (const n of noites) {
+    linhas.push(`${n.alerta}: ${n.total}`, `> - (${n.fem} 💃 / ${n.masc} 🕺)`, "");
+  }
+  linhas.push(`*TOTAL: ${totais.total} cadastrados*`, `👩 ${totais.fem} (${pct(totais.fem)}%)  ·  👨 ${totais.masc} (${pct(totais.masc)}%)`, "");
+  if (comentario && comentario.trim()) linhas.push(`💬 _${comentario.trim()}_`, "");
+  linhas.push("♻️ _Contadores zerados para a próxima semana._");
+  return linhas.join("\n");
+}
+
 async function botFieldsMap() {
   const map = {};
   let page = 1, last = 1;
@@ -130,6 +144,10 @@ try {
     console.log(await textoAlerta());
   } else if (cmd === "enviar-alerta") {
     console.log(JSON.stringify(await enviar(await textoAlerta())));
+  } else if (cmd === "fechamento") {
+    console.log(await textoFechamento(arg ? readFileSync(arg, "utf8") : ""));
+  } else if (cmd === "enviar-fechamento") {
+    console.log(JSON.stringify(await enviar(await textoFechamento(arg ? readFileSync(arg, "utf8") : ""))));
   } else if (cmd === "reset") {
     await reset(confirmar);
   } else {
