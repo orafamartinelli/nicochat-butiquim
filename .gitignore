@@ -1,0 +1,6 @@
+# NUNCA versionar credenciais nem dados de clientes
+credentials.json
+.env
+.env.*
+node_modules/
+backup-*.json
