@@ -1,4 +1,5 @@
-// === Democratico: limpeza da planilha + reset das variaveis do Nico (gatilho 11h diario) ===
+// === Democratico: limpeza da planilha + reset das variaveis do Nico (gatilho 7h diario) ===
+// 7h: roda ANTES dos relatorios das 9h/13h40, que assim ja saem com o Nico sincronizado.
 // Cole no Apps Script da planilha de reservas. Troque NICO_KEY pela chave do Democratico.
 
 var COL_DATA = 10;     // coluna J (Data da reserva)
@@ -7,10 +8,15 @@ var COL_SERVICO = 8;   // coluna H (Servico: Open/Tradicional)
 var ABAS_RESERVA = /^\d\d\s*-\s*(SEG|TER|QUA|QUI|SEX|S.B|DOM)/i;
 var NICO_KEY = 'COLE_A_CHAVE_DO_DEMOCRATICO_AQUI';
 var NICO_BASE = 'https://app.nicochat.com.br/api';
+var FUSO = 'America/Sao_Paulo'; // fuso fixo: nao depende do fuso do projeto/planilha
+var HORA_CORTE = 6;             // antes das 6h, a noite anterior ainda conta como "hoje" (nao apaga)
 
+// "Hoje" sempre em horario de Brasilia, com corte: ate as 6h da manha a data
+// operacional ainda e a do dia anterior, entao a reserva da noite nunca cai cedo.
 function _hoje() {
-  var d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var agora = new Date(Date.now() - HORA_CORTE * 3600 * 1000);
+  var p = Utilities.formatDate(agora, FUSO, 'yyyy-MM-dd').split('-');
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
 }
 
 function _parseData(v) {
@@ -32,6 +38,8 @@ function _norm(s) {
 // ---------- LIMPEZA: apaga linhas com data vencida (coluna J) ----------
 function limparPlanilha(dryRun, filtroAba) {
   var hoje = _hoje();
+  Logger.log('[LIMPEZA] data operacional (corte ' + HORA_CORTE + 'h, ' + FUSO + '): ' +
+    Utilities.formatDate(hoje, FUSO, 'dd/MM/yyyy') + ' — apaga somente datas ANTERIORES a ela');
   var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
@@ -121,14 +129,8 @@ function _proximaOcorrencia(diaSub) {
   return z;
 }
 
-// ---------- RESET: atualiza variaveis do dia anterior p/ a proxima ocorrencia (ou 0) ----------
-function resetDiaAnterior(dryRun) {
-  var SUBS = ['dom', 'seg', 'ter', 'quart', 'quint', 'sext', 'sab'];
-  var ontem = new Date();
-  ontem.setDate(ontem.getDate() - 1);
-  var diaSub = SUBS[ontem.getDay()];
-  var t = _proximaOcorrencia(diaSub);
-  var fields = _nicoFields();
+// aplica os totais (t = saida de _proximaOcorrencia) nas variaveis do Nico de um dia
+function _aplicarDia(diaSub, t, fields, dryRun) {
   var out = [];
   function setMatch(pred, val) {
     for (var k = 0; k < fields.length; k++) {
@@ -145,18 +147,47 @@ function resetDiaAnterior(dryRun) {
   setMatch(function (n) { return n.indexOf('trad') !== -1; }, t.trad);
   setMatch(function (n) { return n.indexOf('encerrada') !== -1; }, '');
   var quando = t.data ? Utilities.formatDate(t.data, Session.getScriptTimeZone(), 'dd/MM') : 'sem futura';
-  Logger.log((dryRun ? '[RESET dry-run] ' : '[RESET] ') + 'dia=' + diaSub + ' proxima=' + quando + '  |  ' + out.join('  |  '));
+  Logger.log('   dia=' + diaSub + ' proxima=' + quando + '  |  ' + out.join('  |  '));
 }
 
-// ---------- ROTINA das 11h (o gatilho chama esta) ----------
-function rotina11h() {
+var DIAS_SUB = ['dom', 'seg', 'ter', 'quart', 'quint', 'sext', 'sab'];
+
+// ---------- RESET TOTAL: atualiza TODOS os dias p/ a proxima ocorrencia (ou 0) ----------
+// Lê a planilha (ja limpa) e sincroniza as 7 variaveis do Nico de uma vez. Idempotente.
+function resetTodosOsDias(dryRun) {
+  var fields = _nicoFields();
+  Logger.log(dryRun ? '[RESET-ALL dry-run]' : '[RESET-ALL]');
+  for (var i = 0; i < DIAS_SUB.length; i++) {
+    _aplicarDia(DIAS_SUB[i], _proximaOcorrencia(DIAS_SUB[i]), fields, dryRun);
+  }
+}
+
+// ---------- RESET so do dia anterior (mantido p/ referencia; nao e mais o usado) ----------
+function resetDiaAnterior(dryRun) {
+  var ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+  var diaSub = DIAS_SUB[ontem.getDay()];
+  Logger.log(dryRun ? '[RESET dry-run]' : '[RESET]');
+  _aplicarDia(diaSub, _proximaOcorrencia(diaSub), _nicoFields(), dryRun);
+}
+
+// ---------- ROTINA DIARIA (o gatilho das 7h chama esta) ----------
+function rotinaDiaria() {
   limparPlanilha(false);
-  resetDiaAnterior(false);
+  resetTodosOsDias(false);
 }
 
 // ---------- TESTES / SETUP ----------
 function limparTudoDryRun() { limparPlanilha(true); }
-function testarReset() { resetDiaAnterior(true); }
-function criarGatilho11h() {
-  ScriptApp.newTrigger('rotina11h').timeBased().everyDays(1).atHour(11).create();
+function testarReset() { resetTodosOsDias(true); }      // dry-run dos 7 dias
+
+// Cria o gatilho diario das 7h (horario de Brasilia, fixado via inTimezone).
+// Apaga gatilhos antigos antes p/ nao duplicar.
+function criarGatilhoDiario() {
+  var ts = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < ts.length; i++) {
+    var fn = ts[i].getHandlerFunction();
+    if (fn === 'rotinaDiaria' || fn === 'rotina11h') ScriptApp.deleteTrigger(ts[i]);
+  }
+  ScriptApp.newTrigger('rotinaDiaria').timeBased().everyDays(1).atHour(7).inTimezone(FUSO).create();
 }

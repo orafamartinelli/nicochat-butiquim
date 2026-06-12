@@ -24,14 +24,30 @@ const norm = (s)=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
 
 // dias na ordem do relatório (Segunda só entra se tiver dado)
 const DIAS = [
-  { key:"Segunda", label:"SEG",    emoji:"📋", open:true,  secao:"form", onlyIfData:true },
-  { key:"Terça",   label:"TERÇA",  emoji:"📋", open:false, secao:"form" },
-  { key:"Quarta",  label:"QUARTA", emoji:"📋", open:true,  secao:"form" },
-  { key:"Quinta",  label:"QUI",    emoji:"📋", open:true,  secao:"form" },
-  { key:"Sexta",   label:"SEX",    emoji:"🟠", open:true,  secao:"bot" },
-  { key:"Sabado",  label:"SÁB",    emoji:"🟠", open:true,  secao:"bot" },
-  { key:"Domingo", label:"DOM",    emoji:"🥘", open:true,  secao:"bot", almoco:true },
+  { key:"Segunda", label:"SEG",    emoji:"📋", open:true,  secao:"form", onlyIfData:true, dow:1 },
+  { key:"Terça",   label:"TERÇA",  emoji:"📋", open:false, secao:"form", dow:2 },
+  { key:"Quarta",  label:"QUARTA", emoji:"📋", open:true,  secao:"form", dow:3 },
+  { key:"Quinta",  label:"QUI",    emoji:"📋", open:true,  secao:"form", dow:4 },
+  { key:"Sexta",   label:"SEX",    emoji:"🟠", open:true,  secao:"bot",  dow:5 },
+  { key:"Sabado",  label:"SÁB",    emoji:"🟠", open:true,  secao:"bot",  dow:6 },
+  { key:"Domingo", label:"DOM",    emoji:"🥘", open:true,  secao:"bot",  almoco:true, dow:0 },
 ];
+
+// Data da próxima ocorrência de cada dia, em horário de Brasília. HORA_CORTE espelha o
+// Apps Script da planilha: antes das 6h, o dia operacional ainda é o anterior.
+const HORA_CORTE = 6;
+function hojeSP(){
+  const s = new Intl.DateTimeFormat("en-CA",{ timeZone:"America/Sao_Paulo" }).format(new Date(Date.now() - HORA_CORTE*3600*1000));
+  const [y,m,d] = s.split("-").map(Number);
+  return new Date(Date.UTC(y, m-1, d));
+}
+function proximaData(dow){
+  const hoje = hojeSP();
+  const delta = (dow - hoje.getUTCDay() + 7) % 7;
+  const d = new Date(hoje); d.setUTCDate(d.getUTCDate() + delta);
+  const dd = String(d.getUTCDate()).padStart(2,"0"), mm = String(d.getUTCMonth()+1).padStart(2,"0");
+  return { txt:`${dd}/${mm}`, ehHoje: delta===0 };
+}
 
 async function coletar(){
   let fields=[],page=1,last=1;
@@ -57,7 +73,8 @@ function texto(dados){
     const v=dados[d.key];
     if(d.onlyIfData && v.reservas===0 && v.px===0) continue;
     if(d.secao==="bot" && !botHeader){ L.push("Reservas pelo Bot:",""); botHeader=true; }
-    L.push(`${d.emoji} ${d.label}:`);
+    const p=proximaData(d.dow);
+    L.push(`${d.emoji} ${d.label} (${p.txt}${p.ehHoje?" — hoje":""}):`);
     L.push(d.almoco ? `- ${v.reservas} Reservas para almoço e ${v.px} pessoas.` : `- ${v.reservas} Reservas e ${v.px} pessoas.`);
     if(d.open) L.push(d.almoco ? `- ${v.open}` : `- Open food: ${v.open}`);
     L.push("");
